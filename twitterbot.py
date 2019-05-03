@@ -1,10 +1,10 @@
 import tweepy
-from datetime import datetime
-from threading import Timer
+import time
 import os, random
 
 
 folder_path = ""
+used_folder_path = ""
 def credentials():
 	consumer_key = ''
 	consumer_secret = ''
@@ -21,22 +21,22 @@ def tweet_photos(api):
 		file = random.choice(os.listdir(folder_path))
 		status = ""
 		try:
-			api.update_with_media(filename=folder_path + "/" + x, status=status)
+			api.update_with_media(filename=folder_path + "/" + file, status=status)
+			os.rename(folder_path + "/" + file, used_folder_path + "/" + file)
 			print("Tweeted!")
-			break
-			sleep(86400)
+			time.sleep(86400)
 		except Exception as e:
 			print("Failed!")
 			break
 
 def reply_photos(api):
-	TRIGGERS = ('@twitterbot send me something')
+	TRIGGERS = ('')
 
 	for tweet in tweets:
 		if tweet.text in TRIGGERS:
 			sn = tweet.user.screen_name
 			x = random.choice(os.listdir(folder_path))
-			status = '@{}'.format(sn)
+			status = '@{} '.format(sn)
 			api.update_with_media(filename=folder_path + "/" + x, status=status)
 			print("Tweeted!")
 
