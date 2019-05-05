@@ -1,10 +1,13 @@
 import tweepy
 import time
 import os, random
+import datetime
+from multiprocessing import Process
+import json
 
-
-folder_path = ""
-used_folder_path = ""
+folder_path = "./images"
+used_folder_path = "./images/used"
+keywords = ['@bot phrase']
 def credentials():
 	consumer_key = ''
 	consumer_secret = ''
@@ -12,7 +15,7 @@ def credentials():
 	access_token_secret = ''
 	auth = tweepy.OAuthHandler(consumer_key, consumer_secret)
 	auth.set_access_token(access_token, access_token_secret)
-	api = tweepy.API(auth)
+	api = tweepy.API(auth, wait_on_rate_limit=True, wait_on_rate_limit_notify=True)
 
 	return api
 
@@ -21,25 +24,62 @@ def tweet_photos(api):
 		file = random.choice(os.listdir(folder_path))
 		status = ""
 		try:
-			api.update_with_media(filename=folder_path + "/" + file, status=status)
-			os.rename(folder_path + "/" + file, used_folder_path + "/" + file)
-			print("Tweeted!")
-			time.sleep(86400)
-		except Exception as e:
-			print("Failed!")
+			if data["last-tweet-time"] == "":
+				update_last_tweet_time(api)
+			try:
+				timed = datetime.datetime.now() - datetime.datetime.strptime(data["last-tweet-time"], '%Y-%m-%d %H:%M:%S')
+			except:
+				timed = datetime.datetime.now() - data["last-tweet-time"]
+			if timed >= datetime.timedelta(hours=24):
+				api.update_with_media(filename=folder_path + "/" + file, status=status)
+				update_last_tweet_time(api)
+				os.rename(folder_path + "/" + file, used_folder_path + "/" + file)
+				print("Tweeted!")
+			else:
+				break
+		except tweepy.TweepError as e:
+			print(e.reason)
+			print("Failed daily tweet!")
 			break
 
-def reply_photos(api):
-	TRIGGERS = ('')
+def update_last_tweet_time(api):
+	last_tweet = api.user_timeline(id=api.me, exclude_replies=True, include_rts=False)
+	with open('./last_tweets.json', 'w') as write_file:
+		data["last-tweet-time"] = last_tweet[0].created_at
+		print(data["last-tweet-time"])
+		json.dump(data, write_file, default = converter)
 
-	for tweet in tweets:
-		if tweet.text in TRIGGERS:
-			sn = tweet.user.screen_name
-			x = random.choice(os.listdir(folder_path))
-			status = '@{} '.format(sn)
-			api.update_with_media(filename=folder_path + "/" + x, status=status)
-			print("Tweeted!")
+def converter(o):
+    if isinstance(o, datetime.datetime):
+        return o.__str__()
+
+class MyStreamListener(tweepy.StreamListener):
+	def on_status(self, status):
+		tweet = status.text
+		directory = tweet[len('@k_o_n_a_m_i_bot '):]
+		print(directory)
+		sn = status.user.screen_name
+		tweetId = status.id
+		x = random.choice(os.listdir(folder_path + "/" + directory))
+		status = '@{}'.format(sn)
+		credentials().update_with_media(filename=folder_path + "/" + directory + "/" + x, status=status, in_reply_to_status_id = tweetId)
+		print("Tweeted!")
 
 if __name__ == "__main__":
-	tweet_photos(credentials())
-	reply_photos(credentials())
+	if os.path.exists('./last_tweets.json'):
+		with open('./last_tweets.json', 'r') as read_file:
+			data = json.load(read_file)
+			print("Last Tweets json file found!")
+	else:
+		with open('./last_tweets.json', 'w') as write_file:
+			data = {
+			"last-tweet-time": "",
+			"last-reply-id": ""
+			}
+			json.dump(data, write_file)
+		print("Last Tweets json file created!")
+	myStreamListener = MyStreamListener(credentials())
+	myStream = tweepy.Stream(auth = credentials().auth, listener=myStreamListener)
+	myStream.filter(track=keywords, is_async=True)
+	while True:
+		tweet_photos(credentials())
